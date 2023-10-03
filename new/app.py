@@ -2,9 +2,11 @@ from flask import Flask, request, jsonify
 from psycopg2 import connect, extras
 from cryptography.fernet import Fernet, InvalidToken
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt
+
 
 app = Flask(__name__)
-
+bcrypt = Bcrypt(app) 
 # Clave Fernet, debes mantenerla constante entre ejecuciones
 key = Fernet.generate_key()
 
@@ -12,7 +14,7 @@ host = 'localhost'
 port = 5432
 dbname = 'usersdb'
 user = 'postgres'
-password = '12345679'
+password = 'paul'
 
 
 def encrypt_password(plain_password):
@@ -71,7 +73,8 @@ def create_user():
     names = new_user['names']
     username = new_user['username']
     email = new_user['email']
-    password = Fernet(key).encrypt(bytes(new_user['password'], 'utf-8'))
+    # Cambio: Usar generate_password_hash en lugar de hashpw
+    password = bcrypt.generate_password_hash(new_user['password']).decode('utf-8')
 
     conn = get_connection()
     cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -99,17 +102,18 @@ def login():
         stored_password = cur.fetchone()
         cur.close()
         conn.close()
+ 
 
-        if stored_password:
-            # La contraseña almacenada está cifrada en la base de datos
-            if verify_password(plain_password, stored_password['password']):
-                return "Contraseña correcta"
-            else:
-                return "Error en usuario o contraseña", 401
+        if stored_password is None:
+            print("El correo electrónico no existe")
+            return jsonify({'message': 'Email not found'}), 404
         else:
-            return "Correo electrónico no registrado", 401
-
-
+            if bcrypt.check_password_hash(stored_password['password'], plain_password):
+                print("La contraseña es correcta")
+                return jsonify({'message': 'Login successful'}), 200
+            else:
+                print("La contraseña es incorrecta")
+                return jsonify({'message': 'Incorrect password'}), 401
 @app.delete('/api/users/<id>')
 def delete_user(id):
     conn = get_connection()
